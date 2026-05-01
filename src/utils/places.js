@@ -66,9 +66,22 @@ export function processElements(elements, lat, lng) {
         ...el,
         elLat,
         elLng,
-        dist: elLat && elLng ? calcDistance(lat, lng, elLat, elLng) : '??'
+        dist: elLat && elLng ? calcDistance(lat, lng, elLat, elLng) : '??',
+        name: el.tags?.name || el.tags?.['name:en'] || 'Unnamed Hospital',
+        phone: el.tags?.phone || el.tags?.['contact:phone'] || '108'
       };
     })
     .filter(el => el.elLat && el.elLng)
     .sort((a, b) => parseFloat(a.dist) - parseFloat(b.dist));
+}
+
+export async function fetchNearestHospital(lat, lng) {
+  try {
+    const elements = await fetchNearby(lat, lng, 'amenity', 'hospital', 10);
+    const processed = processElements(elements, lat, lng);
+    return processed.length > 0 ? processed[0] : null;
+  } catch (err) {
+    console.error('Error fetching nearest hospital:', err);
+    return null;
+  }
 }

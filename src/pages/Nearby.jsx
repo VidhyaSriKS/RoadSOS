@@ -93,9 +93,7 @@ export default function Nearby() {
         ))}
       </div>
 
-      <div style={{ background: '#f8f9fa', padding: '8px 16px', fontSize: '11px', color: '#666', display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <Globe size={12} /> Works globally using OpenStreetMap data
-      </div>
+
 
       <div className="view-toggle">
         <button className={`view-btn ${view==='map'?'active':''}`}
@@ -127,7 +125,7 @@ export default function Nearby() {
 
           <div className="service-list">
             {(status==='ok'||status==='offline') && elements.length === 0 ? <EmptyState info={info} />
-            : elements.slice(0,3).map((el,i) => (
+            : elements.map((el,i) => (
               <ServiceCard key={i} el={el} info={info} userLat={userLat} userLng={userLng} compact />
             ))}
           </div>

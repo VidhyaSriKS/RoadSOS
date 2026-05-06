@@ -172,12 +172,7 @@ export default function Home() {
             <button className="sos-btn" onClick={handleSOS}>SOS</button>
           </div>
           <p className="sos-hint">Tap to find emergency help near you</p>
-          <div style={{ 
-            marginTop: '12px', fontSize: '11px', color: 'rgba(255,255,255,0.7)', 
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' 
-          }}>
-            <Globe size={12} /> Works globally using OpenStreetMap data
-          </div>
+
         </div>
 
         {/* Action grid */}

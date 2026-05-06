@@ -2,13 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation as useLocationHook, getStoredLocation } from '../hooks/useLocation';
 import BottomNav from '../components/BottomNav';
-import { Siren, MapPin, Hospital, Ambulance, ShieldAlert, Bandage, Car, TriangleAlert, Phone, Shield, X, AlertCircle } from 'lucide-react';
+import { Siren, MapPin, Hospital, Ambulance, ShieldAlert, Bandage, Car, TriangleAlert, Phone, Shield, X, AlertCircle, DownloadCloud, CheckCircle, Globe, Wrench, Truck } from 'lucide-react';
 import { fetchNearestHospital } from '../utils/places';
+import { downloadOfflineData, getOfflineDownloadDate } from '../utils/offlineDb';
 
 const ACTIONS = [
   { type:'hospital',         icon: Hospital, label:'Hospitals',  sub:'Trauma centres nearby', bg:'icon-hospital'  },
   { type:'ambulance_service',icon: Ambulance, label:'Ambulance',  sub:'Emergency transport',   bg:'icon-ambulance' },
   { type:'police',           icon: ShieldAlert, label:'Police',     sub:'Nearest station',        bg:'icon-police'    },
+  { type:'repair',           icon: Wrench,     label:'Repair',     sub:'Vehicle help',           bg:'icon-hospital'  },
+  { type:'towing',           icon: Truck,      label:'Towing',     sub:'Recovery service',       bg:'icon-police'    },
   { type:'firstaid',         icon: Bandage, label:'First Aid',  sub:'Step-by-step guide',     bg:'icon-firstaid'  },
 ];
 
@@ -21,8 +24,30 @@ export default function Home() {
   const [nearestHospital, setNearestHospital] = useState(null);
   const [countdown, setCountdown] = useState(60);
   const [sosCountdown, setSosCountdown] = useState(10);
+  const [offlineDate, setOfflineDate] = useState(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const timerRef = useRef(null);
   const sosTimerRef = useRef(null);
+
+  useEffect(() => {
+    getOfflineDownloadDate().then(date => {
+      if (date) setOfflineDate(new Date(date).toLocaleDateString());
+    });
+  }, []);
+
+  async function handleDownloadOffline() {
+    setIsDownloading(true);
+    try {
+      const loc = await getStoredLocation();
+      const count = await downloadOfflineData(loc.lat, loc.lng, 50); // 50km radius
+      setOfflineDate(new Date().toLocaleDateString());
+      alert(`Successfully downloaded ${count} emergency services for offline use!`);
+    } catch (e) {
+      alert("Failed to download offline data. Please check your internet connection.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }
 
   function handleAction(type) {
     if (type === 'firstaid') navigate('/firstaid');
@@ -72,12 +97,37 @@ export default function Home() {
 
   function toggleJourney(enabled) {
     setJourneyOn(enabled);
-    if (enabled) alert('Journey Mode ON — crash detection is now active.');
+    if (enabled) alert('Journey Mode ON — simulating accelerometer monitoring (G > 2.5 detection).');
   }
+
+  // CRASH DETECTION SIMULATION
+  useEffect(() => {
+    if (!journeyOn) return;
+
+    let spikeCount = 0;
+    const interval = setInterval(() => {
+      // Simulate reading accelerometer
+      // 99% of time it's normal (1G), 1% chance of a high G spike
+      const gForce = 1 + (Math.random() > 0.99 ? (Math.random() * 5) : (Math.random() * 0.5));
+      
+      if (gForce > 2.5) {
+        spikeCount++;
+        // Filtering: Ignore short single spikes, wait for 2 consecutive high readings to confirm
+        if (spikeCount >= 2) {
+          setCrashVisible(true);
+          spikeCount = 0;
+        }
+      } else {
+        spikeCount = 0;
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [journeyOn]);
 
   useEffect(() => {
     if (!crashVisible) return;
-    setSosCountdown(10);
+    setSosCountdown(15); // Requirement: 15-second countdown
     timerRef.current = setInterval(() => {
       setSosCountdown(prev => {
         if (prev <= 1) {
@@ -122,6 +172,12 @@ export default function Home() {
             <button className="sos-btn" onClick={handleSOS}>SOS</button>
           </div>
           <p className="sos-hint">Tap to find emergency help near you</p>
+          <div style={{ 
+            marginTop: '12px', fontSize: '11px', color: 'rgba(255,255,255,0.7)', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' 
+          }}>
+            <Globe size={12} /> Works globally using OpenStreetMap data
+          </div>
         </div>
 
         {/* Action grid */}
@@ -151,6 +207,21 @@ export default function Home() {
             <input type="checkbox" checked={journeyOn} onChange={e => toggleJourney(e.target.checked)} />
             <span className="slider" />
           </label>
+        </div>
+
+        {/* Offline Download */}
+        <div className="journey-bar" style={{marginTop:12, marginBottom: 80, cursor: 'pointer', opacity: isDownloading ? 0.7 : 1}} onClick={!isDownloading ? handleDownloadOffline : undefined}>
+          <div className="journey-left">
+            <div className="journey-icon-wrap" style={{background: offlineDate ? '#e8f5e9' : '#e3f2fd'}}>
+              {offlineDate ? <CheckCircle size={20} color="#2e7d32" /> : <DownloadCloud size={20} color="#1976d2" />}
+            </div>
+            <div>
+              <div className="journey-title">Offline Area Map</div>
+              <div className="journey-sub">
+                {isDownloading ? 'Downloading hospitals (50km)...' : (offlineDate ? `Downloaded: ${offlineDate}` : 'Tap to download for offline SOS')}
+              </div>
+            </div>
+          </div>
         </div>
 
         <BottomNav />

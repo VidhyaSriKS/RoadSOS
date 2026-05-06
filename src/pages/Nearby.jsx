@@ -4,7 +4,7 @@ import MapView from '../components/MapView';
 import BottomNav from '../components/BottomNav';
 import { TYPE_MAP, fetchNearby, processElements } from '../utils/places';
 import { getStoredLocation } from '../hooks/useLocation';
-import { ArrowLeft, Map as MapIcon, List, TriangleAlert, MapPin, Phone } from 'lucide-react';
+import { ArrowLeft, Map as MapIcon, List, TriangleAlert, MapPin, Phone, RefreshCw, Globe, Hospital, ShieldAlert, Wrench, Truck } from 'lucide-react';
 
 export default function Nearby() {
   const navigate = useNavigate();
@@ -18,7 +18,18 @@ export default function Nearby() {
   const [userLng, setUserLng] = useState(null);
   const [status, setStatus] = useState('loading');
 
-  useEffect(() => { setElements([]); setStatus('loading'); loadServices(); }, [type]);
+  useEffect(() => { 
+    setElements([]); 
+    setStatus('loading'); 
+    loadServices();
+    
+    const handleOnline = () => {
+      console.log('Internet restored. Refreshing...');
+      loadServices();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [type]);
 
   async function loadServices() {
     try {
@@ -55,6 +66,37 @@ export default function Nearby() {
         </div>
       </div>
 
+      <div className="filter-strip" style={{ 
+        display: 'flex', gap: '8px', padding: '12px', overflowX: 'auto', 
+        background: '#fff', borderBottom: '1px solid #eee' 
+      }}>
+        {[
+          { id: 'hospital', label: 'Hospitals', icon: Hospital },
+          { id: 'police', label: 'Police', icon: ShieldAlert },
+          { id: 'repair', label: 'Repair', icon: Wrench },
+          { id: 'towing', label: 'Towing', icon: Truck },
+        ].map(f => (
+          <button 
+            key={f.id}
+            onClick={() => navigate(`/nearby?type=${f.id}`)}
+            className={`filter-pill ${type === f.id ? 'active' : ''}`}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px',
+              borderRadius: '20px', border: type === f.id ? 'none' : '1px solid #ddd',
+              background: type === f.id ? '#e53935' : '#fff',
+              color: type === f.id ? '#fff' : '#666',
+              fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap'
+            }}
+          >
+            <f.icon size={14} /> {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ background: '#f8f9fa', padding: '8px 16px', fontSize: '11px', color: '#666', display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <Globe size={12} /> Works globally using OpenStreetMap data
+      </div>
+
       <div className="view-toggle">
         <button className={`view-btn ${view==='map'?'active':''}`}
           onClick={() => { setView('map'); setTimeout(()=>window.roadMap?.invalidateSize(),100); }}
@@ -67,7 +109,15 @@ export default function Nearby() {
         </button>
       </div>
 
-      {status === 'offline' && <div className="offline-bar">⚠️ No internet — showing saved data</div>}
+      {status === 'offline' && (
+        <div className="offline-bar" style={{ 
+          background: '#fff3e0', color: '#e65100', padding: '8px 16px', 
+          fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px',
+          borderBottom: '1px solid #ffe0b2'
+        }}>
+          <TriangleAlert size={16} /> Offline Mode Active — showing cached data
+        </div>
+      )}
 
       {view === 'map' ? (
         <div>

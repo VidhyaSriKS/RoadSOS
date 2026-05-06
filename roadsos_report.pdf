@@ -1,0 +1,84 @@
+# RoadSOS: Comprehensive Product & Technical Documentation
+
+## 1. Product Overview
+**RoadSOS** is a cross-platform, offline-first emergency response application designed specifically to assist users during road accidents or medical emergencies. Built with the premise that emergencies often happen in areas with poor cellular reception (like highways), RoadSOS prioritizes offline functionality, speed, and automated responses.
+
+The primary objective is to reduce the time between an accident occurring and emergency services/contacts being notified.
+
+## 2. Target Audience & Core Use Cases
+- **Commuters & Highway Drivers:** People who travel long distances where network reliability fluctuates.
+- **Elderly or Vulnerable Individuals:** Users who might need a simplified, one-tap solution to call for help without navigating complex menus.
+- **First Responders & Bystanders:** People who witness an accident and need quick access to nearby hospitals, police stations, or first aid instructions.
+
+---
+
+## 3. Core Features (User Perspective)
+
+### 3.1. One-Tap SOS System
+- A prominent, central SOS button on the home screen.
+- Instantly locates the nearest hospital.
+- Auto-generates an SMS containing the user's exact Google Maps coordinates and opens the SMS composer to notify emergency contacts.
+- Starts a 60-second countdown. If not canceled, it automatically dials the national emergency number (e.g., 108).
+
+### 3.2. Offline "No-Network" Mode
+- Users can pre-download emergency service locations (Hospitals, Ambulances, Police) for a 50km radius.
+- The app functions entirely offline, allowing users to find the nearest hospital even without a 4G/5G connection.
+
+### 3.3. Journey Mode (Background Protection)
+- A background safety feature designed for road trips.
+- Every 5 minutes, the app checks the user's location.
+- If the user has driven more than 30km from their last synced area, the app silently downloads the next 50km radius of emergency services in the background, ensuring uninterrupted offline protection.
+
+### 3.4. Quick Action Directory
+- **Hospitals:** View trauma centers and hospitals nearby.
+- **Ambulance:** Direct lines to local emergency transport.
+- **Police:** Locate the nearest highway patrol or local station.
+- **First Aid:** Step-by-step, accessible guides for immediate bystander response (e.g., bleeding, CPR).
+
+---
+
+## 4. User Flow & UX Design
+The application utilizes a modern, premium "glassmorphism" aesthetic with a highly contrasting red/white color scheme to ensure elements are visible even in high-stress situations.
+
+1. **Onboarding:** The app requests essential Geolocation permissions natively on the device.
+2. **Dashboard:** The user is presented with their current detected location and a massive, pulsating SOS button.
+3. **Emergency Triggered:** An unmissable red overlay appears, showing the countdown, the nearest hospital details, and direct buttons to Police/Ambulance, minimizing cognitive load.
+
+---
+
+## 5. Technical Architecture & Tech Stack
+
+### 5.1. Frontend & UI
+- **React (v19):** Core UI framework.
+- **Vite:** Lightning-fast build tool and development server.
+- **Lucide React:** Premium SVG iconography.
+- **React Router DOM:** Seamless client-side routing.
+
+### 5.2. Mobile & Native Bridge
+- **Capacitor (v8):** Packages the web app into native Android/iOS applications.
+- **@capacitor/geolocation:** Interfaces directly with the device's native GPS hardware, bypassing browser limitations for high-accuracy tracking.
+
+### 5.3. Mapping & Data Storage
+- **Leaflet:** Interactive map rendering.
+- **LocalForage:** Wraps IndexedDB/WebSQL to store megabytes of geographic emergency data for offline retrieval.
+- **Nominatim API (OpenStreetMap):** Used for reverse-geocoding to convert raw GPS coordinates into readable city/town names.
+
+---
+
+## 6. Future Implementations & Product Roadmap
+
+To evolve RoadSOS from a utility app to an enterprise-grade emergency ecosystem, the following roadmap is proposed:
+
+### Phase 1: Hardware-Level Automation
+- **True Crash Detection:** Integrate `@capacitor/motion` to monitor device accelerometers. Sudden spikes in g-force (indicative of a collision) will automatically trigger the SOS workflow without user interaction.
+- **Persistent Background Tracking:** Integrate robust background geolocation plugins to ensure the "Auto-Sync" feature works even when the app is swiped away or the phone is locked.
+
+### Phase 2: Enhanced Communication & Cloud Integration
+- **WebSockets / Live Tracking:** Instead of sending a static SMS map link, broadcast the user's live, moving location to emergency contacts via a secure web portal.
+- **Push Notifications:** Use Firebase Cloud Messaging (FCM) to instantly alert contacts without relying on SMS.
+- **WebRTC Audio/Video Stream:** Upon SOS activation, automatically open a low-latency audio/video stream allowing emergency contacts or dispatchers to hear/see the situation instantly.
+
+### Phase 3: AI & System Integration
+- **AI-Guided First Aid:** An on-device Language Model that provides voice-guided, situation-specific instructions (e.g., "The user is in a car accident, tell me how to stabilize the neck").
+- **Direct Dispatch API:** Partnering with regional emergency services (112/108) to bypass voice calls. The app will send a JSON payload containing exact GPS coordinates, speed of impact, and user medical history directly to the dispatcher's screen.
+- **i18n Localization:** Full multilingual support to ensure the app is usable across diverse geographic regions.

@@ -1,4 +1,4 @@
-import { Hospital, Ambulance, ShieldAlert, Flame, Pill, Siren } from 'lucide-react';
+import { Hospital, Ambulance, ShieldAlert, Flame, Pill, Siren, Wrench, Truck, Disc, Settings } from 'lucide-react';
 
 export const TYPE_MAP = {
   hospital: {
@@ -21,6 +21,22 @@ export const TYPE_MAP = {
     tag: 'amenity', value: 'pharmacy',
     label: 'Pharmacies', icon: Pill, call: null
   },
+  repair: {
+    tag: 'shop', value: 'car_repair',
+    label: 'Repair Shops', icon: Wrench, call: null
+  },
+  towing: {
+    tag: 'amenity', value: 'vehicle_recovery',
+    label: 'Towing Services', icon: Truck, call: null
+  },
+  tyres: {
+    tag: 'shop', value: 'tyres',
+    label: 'Puncture Shops', icon: Disc, call: null
+  },
+  car_service: {
+    tag: 'shop', value: 'car_repair', // Also car_repair
+    label: 'Car Service Centers', icon: Settings, call: null
+  },
   all: {
     tag: 'amenity', value: 'hospital',
     label: 'All Emergency Services', icon: Siren, call: '112'
@@ -39,22 +55,51 @@ export function calcDistance(lat1, lng1, lat2, lng2) {
   return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
 }
 
-export async function fetchNearby(lat, lng, tag, value, radiusKm = 10) {
+import { getOfflineData } from './offlineDb';
+
+export async function fetchNearby(lat, lng, tag, value, radiusKm = 10, skipFallback = false) {
   const radius = radiusKm * 1000;
+  // Support an array of specific tags if value is undefined or we can just pass them as normal
+  let queryBody = '';
+  if (Array.isArray(tag)) {
+    queryBody = tag.map(t => `
+      node["${t.key}"="${t.val}"](around:${radius},${lat},${lng});
+      way["${t.key}"="${t.val}"](around:${radius},${lat},${lng});
+    `).join('');
+  } else {
+    queryBody = `
+      node["${tag}"="${value}"](around:${radius},${lat},${lng});
+      way["${tag}"="${value}"](around:${radius},${lat},${lng});
+    `;
+  }
+
   const query = `
     [out:json][timeout:25];
     (
-      node["${tag}"="${value}"](around:${radius},${lat},${lng});
-      way["${tag}"="${value}"](around:${radius},${lat},${lng});
+${queryBody}
     );
     out center;
   `;
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: query
-  });
-  const data = await res.json();
-  return data.elements || [];
+  
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: query
+    });
+    if (!res.ok) throw new Error('Network error');
+    const data = await res.json();
+    return data.elements || [];
+  } catch (err) {
+    if (!skipFallback) {
+      console.warn('Network offline! Falling back to offline local database.');
+      const all = await getOfflineData();
+      if (Array.isArray(tag)) {
+        return all.filter(el => tag.some(t => el.tags?.[t.key] === t.val));
+      }
+      return all.filter(el => el.tags?.[tag] === value);
+    }
+    return [];
+  }
 }
 
 export function processElements(elements, lat, lng) {

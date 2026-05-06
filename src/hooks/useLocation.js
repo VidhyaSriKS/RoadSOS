@@ -1,17 +1,33 @@
 import { useState, useEffect } from 'react';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 
 export function useLocation() {
   const [locationText, setLocationText] = useState('⏳ Detecting...');
   const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationText('❌ Location not supported');
-      return;
-    }
+    const fetchLocation = async () => {
+      try {
+        // Request permissions natively on mobile
+        if (Capacitor.isNativePlatform()) {
+          const permStatus = await Geolocation.checkPermissions();
+          if (permStatus.location !== 'granted') {
+            const requestStatus = await Geolocation.requestPermissions();
+            if (requestStatus.location !== 'granted') {
+              setLocationText('🔒 Allow location access');
+              setShowBanner(true);
+              return;
+            }
+          }
+        }
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0
+        });
+
         const { latitude, longitude } = pos.coords;
         window.userLat = latitude;
         window.userLng = longitude;
@@ -31,53 +47,48 @@ export function useLocation() {
             data.address?.village ||
             data.address?.county ||
             'Your area';
-          setLocationText('📍 ' + city);
+          const country = data.address?.country || '';
+          setLocationText('📍 ' + city + (country ? `, ${country}` : ''));
         } catch {
           setLocationText('📍 Location detected');
         }
-      },
-      (err) => {
-        const msgs = {
-          1: '🔒 Allow location access',
-          2: '📡 GPS unavailable',
-          3: '⏱ Location timed out',
-        };
-        setLocationText(msgs[err.code] || '❌ Location error');
+      } catch (err) {
+        setLocationText('❌ Location error');
         setShowBanner(true);
-        console.error('Location error:', err.message);
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-    );
+        console.error('Location error:', err);
+      }
+    };
+
+    fetchLocation();
   }, []);
 
   return { locationText, showBanner };
 }
 
 export function getStoredLocation() {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const lat = localStorage.getItem('userLat');
     const lng = localStorage.getItem('userLng');
     if (lat && lng) {
-      // Refresh in background silently
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          localStorage.setItem('userLat', pos.coords.latitude);
-          localStorage.setItem('userLng', pos.coords.longitude);
-        },
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 0 }
-      );
+      // Refresh silently
+      try {
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0 });
+        localStorage.setItem('userLat', pos.coords.latitude);
+        localStorage.setItem('userLng', pos.coords.longitude);
+      } catch (e) {}
+      
       resolve({ lat: parseFloat(lat), lng: parseFloat(lng) });
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        localStorage.setItem('userLat', p.coords.latitude);
-        localStorage.setItem('userLng', p.coords.longitude);
-        resolve({ lat: p.coords.latitude, lng: p.coords.longitude });
-      },
-      reject,
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-    );
+
+    try {
+      const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+      localStorage.setItem('userLat', p.coords.latitude);
+      localStorage.setItem('userLng', p.coords.longitude);
+      resolve({ lat: p.coords.latitude, lng: p.coords.longitude });
+    } catch (e) {
+      reject(e);
+    }
   });
 }
+

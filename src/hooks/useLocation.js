@@ -1,68 +1,89 @@
 import { useState, useEffect } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+import { NativeSettings } from 'capacitor-native-settings';
+import { App } from '@capacitor/app';
 
 export function useLocation() {
   const [locationText, setLocationText] = useState('⏳ Detecting...');
   const [showBanner, setShowBanner] = useState(false);
 
-  useEffect(() => {
-    const fetchLocation = async () => {
-      try {
-        // Request permissions natively on mobile
-        if (Capacitor.isNativePlatform()) {
-          const permStatus = await Geolocation.checkPermissions();
-          if (permStatus.location !== 'granted') {
-            const requestStatus = await Geolocation.requestPermissions();
-            if (requestStatus.location !== 'granted') {
-              setLocationText('🔒 Allow location access');
-              setShowBanner(true);
-              return;
-            }
-          }
+  const fetchLocation = async (forceSystemSettings = false) => {
+    try {
+      // Request permissions natively on mobile
+      if (Capacitor.isNativePlatform()) {
+        if (forceSystemSettings) {
+          await NativeSettings.open({
+            option: Capacitor.getPlatform() === 'ios' ? 'locationServices' : 'location'
+          });
+          return;
         }
 
-        const pos = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 0
-        });
-
-        const { latitude, longitude } = pos.coords;
-        window.userLat = latitude;
-        window.userLng = longitude;
-        localStorage.setItem('userLat', latitude);
-        localStorage.setItem('userLng', longitude);
-        setShowBanner(false);
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { 'Accept-Language': 'en' } }
-          );
-          const data = await res.json();
-          const city =
-            data.address?.city ||
-            data.address?.town ||
-            data.address?.village ||
-            data.address?.county ||
-            'Your area';
-          const country = data.address?.country || '';
-          setLocationText('📍 ' + city + (country ? `, ${country}` : ''));
-        } catch {
-          setLocationText('📍 Location detected');
+        const permStatus = await Geolocation.checkPermissions();
+        if (permStatus.location !== 'granted') {
+          await Geolocation.requestPermissions();
         }
-      } catch (err) {
-        setLocationText('❌ Location error');
-        setShowBanner(true);
-        console.error('Location error:', err);
       }
-    };
 
+      setLocationText('⏳ Detecting...');
+      const pos = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0
+      });
+
+      const { latitude, longitude } = pos.coords;
+      window.userLat = latitude;
+      window.userLng = longitude;
+      localStorage.setItem('userLat', latitude);
+      localStorage.setItem('userLng', longitude);
+      setShowBanner(false);
+
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await res.json();
+        const city =
+          data.address?.city ||
+          data.address?.town ||
+          data.address?.village ||
+          data.address?.county ||
+          'Your area';
+        const country = data.address?.country || '';
+        setLocationText('📍 ' + city + (country ? `, ${country}` : ''));
+      } catch {
+        setLocationText('📍 Location detected');
+      }
+    } catch (err) {
+      setLocationText('❌ Location error');
+      setShowBanner(true);
+      console.error('Location error:', err);
+    }
+  };
+
+  useEffect(() => {
     fetchLocation();
+
+    // Re-check when app is resumed (e.g. from settings)
+    let listener;
+    if (Capacitor.isNativePlatform()) {
+      App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) fetchLocation();
+      }).then(l => listener = l);
+    }
+
+    return () => {
+      if (listener) listener.remove();
+    };
   }, []);
 
-  return { locationText, showBanner };
+  return { 
+    locationText, 
+    showBanner, 
+    refreshLocation: fetchLocation 
+  };
 }
 
 export function getStoredLocation() {

@@ -382,7 +382,8 @@ body {
   display:none; position:fixed; inset:0;
   background:linear-gradient(145deg, rgba(229,57,53,0.97), rgba(183,28,28,0.97));
   z-index:1000; flex-direction:column; align-items:center;
-  justify-content:center; color:#fff; text-align:center; padding:40px;
+  justify-content:flex-start; color:#fff; text-align:center; padding:60px 40px;
+  overflow-y:auto;
 }
 .crash-overlay.show { display:flex; }
 .crash-title { font-size:30px; font-weight:900; margin-bottom:10px; }

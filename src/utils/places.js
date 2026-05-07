@@ -102,18 +102,22 @@ ${queryBody}
   }
 }
 
-export function processElements(elements, lat, lng) {
+export function processElements(elements, lat, lng, defaultCall = null) {
   return elements
     .map(el => {
       const elLat = el.lat ?? el.center?.lat ?? null;
       const elLng = el.lon ?? el.center?.lon ?? null;
+      const tags = el.tags || {};
+      // Prioritize explicit phone/mobile tags, then fall back to defaultCall
+      const phone = tags.phone || tags['contact:phone'] || tags.mobile || tags['contact:mobile'] || tags['emergency:phone'] || defaultCall;
+      
       return {
         ...el,
         elLat,
         elLng,
         dist: elLat && elLng ? calcDistance(lat, lng, elLat, elLng) : '??',
-        name: el.tags?.name || el.tags?.['name:en'] || 'Unnamed Hospital',
-        phone: el.tags?.phone || el.tags?.['contact:phone'] || '108'
+        name: tags.name || tags['name:en'] || 'Unnamed Service',
+        phone: phone
       };
     })
     .filter(el => el.elLat && el.elLng)
@@ -123,7 +127,7 @@ export function processElements(elements, lat, lng) {
 export async function fetchNearestHospital(lat, lng) {
   try {
     const elements = await fetchNearby(lat, lng, 'amenity', 'hospital', 10);
-    const processed = processElements(elements, lat, lng);
+    const processed = processElements(elements, lat, lng, '108');
     return processed.length > 0 ? processed[0] : null;
   } catch (err) {
     console.error('Error fetching nearest hospital:', err);

@@ -4,7 +4,7 @@ import MapView from '../components/MapView';
 import BottomNav from '../components/BottomNav';
 import { TYPE_MAP, fetchNearby, processElements } from '../utils/places';
 import { getStoredLocation } from '../hooks/useLocation';
-import { ArrowLeft, Map as MapIcon, List, TriangleAlert, MapPin, Phone, RefreshCw, Globe, Hospital, ShieldAlert, Wrench, Truck } from 'lucide-react';
+import { ArrowLeft, Map as MapIcon, List, TriangleAlert, MapPin, Phone, RefreshCw, Globe, Hospital, Ambulance, ShieldAlert, Wrench, Truck } from 'lucide-react';
 
 export default function Nearby() {
   const navigate = useNavigate();
@@ -72,6 +72,7 @@ export default function Nearby() {
       }}>
         {[
           { id: 'hospital', label: 'Hospitals', icon: Hospital },
+          { id: 'ambulance_service', label: 'Ambulance', icon: Ambulance },
           { id: 'police', label: 'Police', icon: ShieldAlert },
           { id: 'repair', label: 'Repair', icon: Wrench },
           { id: 'towing', label: 'Towing', icon: Truck },
@@ -145,8 +146,8 @@ export default function Nearby() {
 }
 
 function ServiceCard({ el, info, userLat, userLng, compact }) {
-  const name  = el.tags?.name || el.tags?.['name:en'] || 'Unnamed';
-  const phone = el.tags?.phone || el.tags?.['contact:phone'] || info.call;
+  const name  = el.name || 'Unnamed';
+  const phone = el.phone || info.call;
   const addr  = el.tags?.['addr:street'] || el.tags?.['addr:full'] || el.tags?.['addr:city'] || 'See on map';
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${el.elLat},${el.elLng}&travelmode=driving`;
   return (

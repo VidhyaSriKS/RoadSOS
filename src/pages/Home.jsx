@@ -5,6 +5,8 @@ import BottomNav from '../components/BottomNav';
 import { Siren, MapPin, Hospital, Ambulance, ShieldAlert, Bandage, Car, TriangleAlert, Phone, Shield, X, AlertCircle, DownloadCloud, CheckCircle, Globe, Wrench, Truck } from 'lucide-react';
 import { fetchNearestHospital } from '../utils/places';
 import { downloadOfflineData, getOfflineDownloadDate } from '../utils/offlineDb';
+import { NativeSettings } from 'capacitor-native-settings';
+import { Capacitor } from '@capacitor/core';
 
 const ACTIONS = [
   { type:'hospital',         icon: Hospital, label:'Hospitals',  sub:'Trauma centres nearby', bg:'icon-hospital'  },
@@ -17,7 +19,7 @@ const ACTIONS = [
 
 export default function Home() {
   const navigate = useNavigate();
-  const { locationText, showBanner } = useLocationHook();
+  const { locationText, showBanner, refreshLocation } = useLocationHook();
   const [journeyOn, setJourneyOn] = useState(false);
   const [crashVisible, setCrashVisible] = useState(false);
   const [sosActive, setSosActive] = useState(false);
@@ -26,6 +28,7 @@ export default function Home() {
   const [sosCountdown, setSosCountdown] = useState(10);
   const [offlineDate, setOfflineDate] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const timerRef = useRef(null);
   const sosTimerRef = useRef(null);
 
@@ -57,6 +60,13 @@ export default function Home() {
   async function handleSOS() {
     setSosActive(true);
     setCountdown(60);
+
+    // Voice Alert
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const msg = new SpeechSynthesisUtterance("SOS Activated. Emergency services will be contacted.");
+      window.speechSynthesis.speak(msg);
+    }
 
     // 1. Get nearest hospital immediately
     try {
@@ -97,7 +107,7 @@ export default function Home() {
 
   function toggleJourney(enabled) {
     setJourneyOn(enabled);
-    if (enabled) alert('Journey Mode ON — simulating accelerometer monitoring (G > 2.5 detection).');
+    if (enabled) alert('Journey Mode ON — simulating accelerometer monitoring.');
   }
 
   // CRASH DETECTION SIMULATION
@@ -126,7 +136,17 @@ export default function Home() {
   }, [journeyOn]);
 
   useEffect(() => {
-    if (!crashVisible) return;
+    if (!crashVisible) {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      return;
+    }
+
+    // Voice Alert
+    if ('speechSynthesis' in window) {
+      const msg = new SpeechSynthesisUtterance("Accident detected. Emergency services will be contacted.");
+      window.speechSynthesis.speak(msg);
+    }
+
     setSosCountdown(15); // Requirement: 15-second countdown
     timerRef.current = setInterval(() => {
       setSosCountdown(prev => {
@@ -151,15 +171,18 @@ export default function Home() {
   return (
     <>
       {showBanner && (
-        <div className="location-banner" onClick={() => window.location.reload()}>
-          ⚠️ Tap here — allow location for RoadSoS to work
+        <div className="location-banner" onClick={() => setShowPermissionModal(true)}>
+          ⚠️ Location access needed — Tap to enable
         </div>
       )}
 
       <div className="app">
         {/* Topbar */}
         <div className="topbar">
-          <div className="logo"><Siren className="text-red-500" size={24} color="#e53935" /> Road<span>SoS</span></div>
+          <div className="logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+            <img src="/logo.jpg" alt="RoadSoS" style={{ height: 45, width: 'auto', marginRight: 4 }} />
+            Road<span>SoS</span>
+          </div>
           <div className="location-pill"><MapPin size={14} /> {locationText.replace('📍 ','').replace('⏳ ','').replace('🔒 ','').replace('📡 ','').replace('⏱ ','').replace('❌ ','') || 'Detecting…'}</div>
         </div>
 
@@ -311,6 +334,7 @@ export default function Home() {
             onClick={() => {
               if (sosTimerRef.current) clearInterval(sosTimerRef.current);
               setSosActive(false);
+              if ('speechSynthesis' in window) window.speechSynthesis.cancel();
             }} 
             style={{
               marginTop: 40, background: 'none', border: '2px solid rgba(255,255,255,0.4)',
@@ -320,6 +344,52 @@ export default function Home() {
           >
             <X size={18} /> I'm okay — Cancel SOS
           </button>
+        </div>
+      )}
+      {/* Permission Modal */}
+      {showPermissionModal && (
+        <div className="sos-active-overlay" style={{ 
+          position: 'fixed', inset: 0, zIndex: 3000, 
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px'
+        }}>
+          <div className="form-card" style={{ maxWidth: 340, width: '100%', textAlign: 'center', padding: '32px 24px', margin: 0 }}>
+            <div style={{ background: '#fff0f0', width: 64, height: 64, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <MapPin size={32} color="#e53935" />
+            </div>
+            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 12, color: '#1a1d27', letterSpacing: '-0.5px' }}>Location Access</h3>
+            <p style={{ fontSize: 15, color: '#6b7280', marginBottom: 12, lineHeight: 1.6 }}>
+              RoadSoS needs your location to find the nearest hospitals.
+            </p>
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', marginBottom: 24, textAlign: 'left', fontSize: 13, color: '#475569' }}>
+              <strong>To fix:</strong> Tap below, then go to <b>Permissions</b> → <b>Location</b> and select <b>Allow</b>.
+            </div>
+            <button 
+              className="btn-add" 
+              onClick={async () => {
+                setShowPermissionModal(false);
+                if (Capacitor.isNativePlatform()) {
+                  await NativeSettings.open({
+                    option: Capacitor.getPlatform() === 'ios' ? 'app' : 'application_details'
+                  });
+                } else {
+                  await refreshLocation();
+                }
+              }}
+              style={{ width: '100%', marginBottom: 16 }}
+            >
+              Grant Permission
+            </button>
+            <button 
+              onClick={async () => {
+                setShowPermissionModal(false);
+                await refreshLocation(true); // Triggers System GPS Settings
+              }}
+              style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              GPS still off? Open System Settings
+            </button>
+          </div>
         </div>
       )}
     </>

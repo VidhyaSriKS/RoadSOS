@@ -25,11 +25,11 @@ export function useLocation() {
         }
       }
 
-      setLocationText('⏳ Detecting...');
+      setLocationText('📡 Obtaining GPS lock...');
       const pos = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0
+        timeout: 10000, // 10 seconds for a real GPS lock
+        maximumAge: 0   // Force fresh location, no cache
       });
 
       const { latitude, longitude } = pos.coords;
@@ -40,21 +40,34 @@ export function useLocation() {
       setShowBanner(false);
 
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-          { headers: { 'Accept-Language': 'en' } }
-        );
+        // Primary: OpenStreetMap (Nominatim) for accuracy
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`, {
+          headers: { 'User-Agent': 'RoadSOS-App' }
+        });
         const data = await res.json();
-        const city =
-          data.address?.city ||
-          data.address?.town ||
-          data.address?.village ||
-          data.address?.county ||
-          'Your area';
-        const country = data.address?.country || '';
-        setLocationText('📍 ' + city + (country ? `, ${country}` : ''));
-      } catch {
-        setLocationText('📍 Location detected');
+        
+        if (data && data.address) {
+          const city = data.address.city || data.address.town || data.address.village || data.address.suburb || 'Your area';
+          const country = data.address.country || '';
+          const countryCode = data.address.country_code?.toUpperCase() || 'IN';
+          localStorage.setItem('countryCode', countryCode);
+          setLocationText('📍 ' + city + (country ? `, ${country}` : ''));
+        } else {
+          throw new Error('OSM failed');
+        }
+      } catch (err) {
+        console.warn('OSM Geocode failed, falling back to Geoapify:', err);
+        try {
+          const { reverseGeocode } = await import('../services/geoapify');
+          const data = await reverseGeocode(latitude, longitude);
+          const city = data.city || data.town || data.village || data.county || 'Your area';
+          const country = data.country || '';
+          const countryCode = data.country_code?.toUpperCase() || 'IN';
+          localStorage.setItem('countryCode', countryCode);
+          setLocationText('📍 ' + city + (country ? `, ${country}` : ''));
+        } catch (geoErr) {
+          setLocationText('📍 Location detected');
+        }
       }
     } catch (err) {
       setLocationText('❌ Location error');
@@ -93,13 +106,16 @@ export function getStoredLocation() {
     if (lat && lng) {
       // Refresh silently
       try {
-        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0 });
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
         localStorage.setItem('userLat', pos.coords.latitude);
         localStorage.setItem('userLng', pos.coords.longitude);
-      } catch (e) {}
-      
-      resolve({ lat: parseFloat(lat), lng: parseFloat(lng) });
-      return;
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        return;
+      } catch (e) {
+        // If refresh fails, use stored
+        resolve({ lat: parseFloat(lat), lng: parseFloat(lng) });
+        return;
+      }
     }
 
     try {

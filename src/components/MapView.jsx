@@ -2,8 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
+import { getCachedTile } from '../services/offlineManager';
 
-// Fix Leaflet default icon paths broken by bundlers
+// Fix Leaflet default icon paths
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -11,87 +15,133 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
+// Custom TileLayer for Offline Support
+const OfflineTileLayer = L.TileLayer.extend({
+  createTile: function (coords, done) {
+    const tile = document.createElement('img');
+    L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
+    L.DomEvent.on(tile, 'error', L.Util.bind(this._tileOnError, this, done, tile));
+
+    const { x, y, z } = coords;
+    getCachedTile(z, x, y).then(blob => {
+      if (blob) {
+        tile.src = URL.createObjectURL(blob);
+      } else {
+        tile.src = this.getTileUrl(coords);
+      }
+    }).catch(() => {
+      tile.src = this.getTileUrl(coords);
+    });
+
+    return tile;
+  }
+});
+
 export default function MapView({ elements, userLat, userLng, info }) {
   const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
+  const [mapInstance, setMapInstance] = useState(null);
+  const clusterRef = useRef(null);
+  const userMarkerRef = useRef(null);
 
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (!mapRef.current || mapInstance) return;
 
     const map = L.map(mapRef.current).setView([userLat, userLng], 14);
-    mapInstanceRef.current = map;
+    setMapInstance(map);
     window.roadMap = map;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    new OfflineTileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
     // Blue circle for user location
-    L.circleMarker([userLat, userLng], {
+    const userMarker = L.circleMarker([userLat, userLng], {
       radius: 10,
       color: '#1565C0',
       fillColor: '#1976D2',
       fillOpacity: 0.9,
       weight: 3
-    }).addTo(map).bindPopup('<b>📍 You are here</b>').openPopup();
+    }).addTo(map).bindPopup('<b>📍 You are here</b>');
+    
+    userMarkerRef.current = userMarker;
+    userMarker.openPopup();
 
     return () => {
       map.remove();
-      mapInstanceRef.current = null;
+      setMapInstance(null);
       window.roadMap = null;
     };
-  }, [userLat, userLng]);
+  }, []); // Only init once
+
+  // Update view when user location changes
+  useEffect(() => {
+    if (mapInstance && userLat && userLng) {
+      mapInstance.flyTo([userLat, userLng], 15, { animate: true });
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setLatLng([userLat, userLng]);
+      }
+    }
+  }, [userLat, userLng, mapInstance]);
 
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !elements.length) return;
+    if (!mapInstance || !elements || elements.length === 0) return;
+
+    if (clusterRef.current) {
+      mapInstance.removeLayer(clusterRef.current);
+    }
+
+    const clusters = L.layerGroup();
+    clusterRef.current = clusters;
 
     const iconHtml = renderToString(<info.icon size={16} color="#fff" />);
-
     const redIcon = L.divIcon({
       html: `<div style="
-        background:#e53935; color:#fff;
-        border-radius:50% 50% 50% 0;
+        background:#e53935; 
+        width:30px; height:30px;
+        border-radius:30px 30px 30px 2px;
         transform:rotate(-45deg);
-        width:32px; height:32px;
-        display:flex; align-items:center;
-        justify-content:center;
-        font-size:13px; border:2px solid #fff;
-        box-shadow:0 2px 6px rgba(0,0,0,0.3);
-      "><span style="transform:rotate(45deg); display:flex; align-items:center; justify-content:center;">${iconHtml}</span></div>`,
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-      popupAnchor: [0, -32],
+        border:2px solid #fff;
+        box-shadow:0 2px 5px rgba(0,0,0,0.4);
+        display:flex; align-items:center; justify-content:center;
+      "><div style="transform:rotate(45deg); display:flex;">${iconHtml}</div></div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 30], // Exactly at the bottom tip
+      popupAnchor: [0, -30],
       className: ''
     });
 
     elements.forEach(el => {
-      if (!el.elLat || !el.elLng) return;
-      const name = el.tags?.name || el.tags?.['name:en'] || 'Unnamed';
-      const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${el.elLat},${el.elLng}&travelmode=driving`;
+      if (!el.lat || !el.lon) return;
+      const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${el.lat},${el.lon}&travelmode=driving`;
 
-      L.marker([el.elLat, el.elLng], { icon: redIcon })
-        .addTo(map)
+      const marker = L.marker([el.lat, el.lon], { icon: redIcon })
         .bindPopup(`
-          <div style="min-width:160px;">
-            <b style="font-size:13px;">${name}</b><br>
-            <span style="color:#e53935;font-size:12px;">${el.dist} km away</span><br><br>
-            <a href="tel:${info.call || 108}"
-              style="background:#e53935;color:#fff;padding:5px 10px;
-              border-radius:6px;text-decoration:none;font-size:12px;
-              margin-right:6px;">📞 Call</a>
-            <a href="${mapsUrl}" target="_blank"
-              style="background:#f0f0f0;color:#333;padding:5px 10px;
-              border-radius:6px;text-decoration:none;font-size:12px;">🗺 Go</a>
+          <div style="min-width:180px; padding:4px;">
+            <b style="font-size:14px; display:block; margin-bottom:4px;">${el.name}</b>
+            <span style="color:#666; font-size:11px; display:block; margin-bottom:4px;">${el.address || 'Address unknown'}</span>
+            <span style="color:#e53935; font-size:12px; font-weight:700;">${el.dist} km away</span><br><br>
+            <div style="display:flex; gap:8px;">
+              ${el.phone ? `<a href="tel:${el.phone}"
+                style="background:#e53935;color:#fff;padding:6px 12px;
+                border-radius:8px;text-decoration:none;font-size:12px;
+                flex:1; text-align:center;">📞 Call</a>` : ''}
+              <a href="${mapsUrl}" target="_blank"
+                style="background:#f0f0f0;color:#333;padding:6px 12px;
+                border-radius:8px;text-decoration:none;font-size:12px;
+                flex:1; text-align:center;">🗺 Go</a>
+            </div>
           </div>
         `);
+      clusters.addLayer(marker);
     });
 
+    mapInstance.addLayer(clusters);
+
     const bounds = elements
-      .filter(el => el.elLat && el.elLng)
-      .map(el => [el.elLat, el.elLng]);
-    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
-  }, [elements, info, userLat, userLng]);
+      .filter(el => el.lat && el.lon)
+      .map(el => [el.lat, el.lon]);
+    if (bounds.length) mapInstance.fitBounds(bounds, { padding: [40, 40] });
+  }, [elements, info, userLat, userLng, mapInstance]);
 
   return <div ref={mapRef} id="map" />;
 }

@@ -34,9 +34,12 @@ export default function Contacts() {
     const lng = localStorage.getItem('userLng') || '78.1460';
     const link = `https://maps.google.com/?q=${lat},${lng}`;
     const msg = `🚨 TEST from RoadSoS: I was in an accident here: ${link} — Please come or call 108.`;
-    
-    // SMS works better in low network areas as requested
-    const smsUrl = `sms:${contacts[0].phone}?body=${encodeURIComponent(msg)}`;
+
+    // Send to ALL saved contacts
+    const isIos = /iphone|ipad/i.test(navigator.userAgent);
+    const separator = isIos ? ';' : ',';
+    const phoneNumbers = contacts.map(c => c.phone).join(separator);
+    const smsUrl = `sms:${phoneNumbers}${isIos ? '&' : '?'}body=${encodeURIComponent(msg)}`;
     window.location.href = smsUrl;
   }
 
@@ -102,10 +105,10 @@ export default function Contacts() {
         )}
 
         <button className="test-btn" onClick={testSOS} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-          <Send size={18} /> Test SOS Message
+          <Send size={18} /> Message
         </button>
         <p style={{ fontSize: 11, color: '#bbb', textAlign: 'center', marginTop: 6 }}>
-          Opens your SMS app with a test location message to your first contact
+          Opens your SMS app pre-filled to all {contacts.length > 0 ? contacts.length : ''} saved contact{contacts.length !== 1 ? 's' : ''}
         </p>
       </div>
 

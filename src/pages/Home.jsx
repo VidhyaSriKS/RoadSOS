@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation as useLocationHook, getStoredLocation } from '../hooks/useLocation';
 import BottomNav from '../components/BottomNav';
-import { Siren, MapPin, Hospital, Ambulance, ShieldAlert, Bandage, Car, TriangleAlert, Phone, Shield, X, AlertCircle, DownloadCloud, CheckCircle, Globe, Wrench, Truck, Pill, Fuel } from 'lucide-react';
+import LocationGuard from '../components/LocationGuard';
+import { Siren, MapPin, Hospital, Ambulance, ShieldAlert, Bandage, Car, TriangleAlert, Phone, Shield, X, AlertCircle, DownloadCloud, Wrench, Truck, Pill, Fuel } from 'lucide-react';
 import { fetchNearestHospital, getEmergencyContact } from '../utils/places';
 import { downloadRegion } from '../services/offlineManager';
-import { NativeSettings } from 'capacitor-native-settings';
 import { Capacitor } from '@capacitor/core';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
@@ -22,7 +22,7 @@ const ACTIONS = [
 
 export default function Home() {
   const navigate = useNavigate();
-  const { locationText, showBanner, refreshLocation } = useLocationHook();
+  const { locationText, permissionStatus, isUsingCachedLocation, refreshLocation, forceRefetch } = useLocationHook();
   const [journeyOn, setJourneyOn] = useState(false);
   const [crashVisible, setCrashVisible] = useState(false);
   const [sosActive, setSosActive] = useState(false);
@@ -30,7 +30,6 @@ export default function Home() {
   const [countdown, setCountdown] = useState(60);
   const [sosCountdown, setSosCountdown] = useState(15);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const timerRef = useRef(null);
   const sosTimerRef = useRef(null);
 
@@ -106,6 +105,18 @@ export default function Home() {
       }
     } catch (err) {
       console.error("SOS Error:", err);
+      // Location failed — still send SMS using last cached coords
+      const contacts = JSON.parse(localStorage.getItem('emergencyContacts') || '[]');
+      const lat = localStorage.getItem('userLat') || '0';
+      const lng = localStorage.getItem('userLng') || '0';
+      if (contacts.length > 0) {
+        const mapsLink = `https://maps.google.com/?q=${lat},${lng}`;
+        const msg = `🚨 SOS from RoadSoS! I may be in an accident. My last known location: ${mapsLink}`;
+        const separator = Capacitor.getPlatform() === 'ios' ? ';' : ',';
+        const phoneNumbers = contacts.map(c => c.phone).join(separator);
+        const smsUrl = `sms:${phoneNumbers}${Capacitor.getPlatform() === 'ios' ? '&' : '?'}body=${encodeURIComponent(msg)}`;
+        window.location.href = smsUrl;
+      }
     }
 
     if (sosTimerRef.current) clearInterval(sosTimerRef.current);
@@ -178,10 +189,8 @@ export default function Home() {
 
   return (
     <>
-      {showBanner && (
-        <div className="location-banner" onClick={() => setShowPermissionModal(true)}>
-          ⚠️ Location access needed — Tap to enable
-        </div>
+      {permissionStatus === 'denied' && (
+        <LocationGuard onRetry={forceRefetch} />
       )}
 
       <div className="app">
@@ -190,7 +199,16 @@ export default function Home() {
             <img src="/logo.jpg" alt="RoadSoS" style={{ height: 45, width: 'auto', marginRight: 4 }} />
             Road<span>SoS</span>
           </div>
-          <div className="location-pill"><MapPin size={14} /> {locationText.replace('📍 ','').replace('⏳ ','').replace('🔒 ','').replace('📡 ','').replace('⏱ ','').replace('❌ ','') || 'Detecting…'}</div>
+          <div
+            className={`location-pill ${isUsingCachedLocation ? 'location-pill-warn' : ''}`}
+            style={{ cursor: isUsingCachedLocation ? 'pointer' : 'default' }}
+            onClick={isUsingCachedLocation ? forceRefetch : undefined}
+            title={isUsingCachedLocation ? 'Tap to retry GPS lock' : ''}
+          >
+            <MapPin size={14} />
+            {locationText.replace('📍 ','').replace('⏳ ','').replace('🔒 ','').replace('📡 ','').replace('⏱ ','').replace('❌ ','') || 'Detecting…'}
+            {isUsingCachedLocation && <span style={{ fontSize: 10, opacity: 0.8, marginLeft: 2 }}>(cached)</span>}
+          </div>
         </div>
 
         <div className="home-hero">
@@ -243,6 +261,21 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* GPS Signal Lost — non-blocking soft banner */}
+        {permissionStatus === 'error' && (
+          <div className="gps-lost-banner">
+            <div className="gps-lost-left">
+              <span className="gps-lost-dot" />
+              <span>
+                {isUsingCachedLocation
+                  ? '⚠️ Weak GPS — using last known location'
+                  : '⚠️ GPS signal lost — move to open area'}
+              </span>
+            </div>
+            <button className="gps-retry-btn" onClick={forceRefetch}>Retry</button>
+          </div>
+        )}
 
         <BottomNav />
       </div>
@@ -345,51 +378,6 @@ export default function Home() {
         </div>
       )}
 
-      {showPermissionModal && (
-        <div className="sos-active-overlay" style={{ 
-          position: 'fixed', inset: 0, zIndex: 3000, 
-          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px'
-        }}>
-          <div className="form-card" style={{ maxWidth: 340, width: '100%', textAlign: 'center', padding: '32px 24px', margin: 0 }}>
-            <div style={{ background: '#fff0f0', width: 64, height: 64, borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-              <MapPin size={32} color="#e53935" />
-            </div>
-            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 12, color: '#1a1d27', letterSpacing: '-0.5px' }}>Location Access</h3>
-            <p style={{ fontSize: 15, color: '#6b7280', marginBottom: 12, lineHeight: 1.6 }}>
-              RoadSoS needs your location to find the nearest hospitals.
-            </p>
-            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', marginBottom: 24, textAlign: 'left', fontSize: 13, color: '#475569' }}>
-              <strong>To fix:</strong> Tap below, then go to <b>Permissions</b> → <b>Location</b> and select <b>Allow</b>.
-            </div>
-            <button 
-              className="btn-add" 
-              onClick={async () => {
-                setShowPermissionModal(false);
-                if (Capacitor.isNativePlatform()) {
-                  await NativeSettings.open({
-                    option: Capacitor.getPlatform() === 'ios' ? 'app' : 'application_details'
-                  });
-                } else {
-                  await refreshLocation();
-                }
-              }}
-              style={{ width: '100%', marginBottom: 16 }}
-            >
-              Grant Permission
-            </button>
-            <button 
-              onClick={async () => {
-                setShowPermissionModal(false);
-                await refreshLocation(true); // Triggers System GPS Settings
-              }}
-              style={{ background: 'none', border: 'none', color: '#e53935', fontSize: 13, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              GPS still off? Open System Settings
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

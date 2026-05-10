@@ -134,7 +134,8 @@ export function processElements(elements, lat, lng, maxDistKm = 150) {
 
 export async function fetchNearestHospital(lat, lng) {
   try {
-    const elements = await fetchNearby(lat, lng, 'hospital', 10);
+    const result = await fetchNearby(lat, lng, 'hospital', 10);
+    const elements = result.places || [];
     const processed = processElements(elements, lat, lng);
     return processed.length > 0 ? processed[0] : null;
   } catch (err) {

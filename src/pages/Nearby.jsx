@@ -8,8 +8,10 @@ import { downloadRegion } from '../services/offlineManager';
 import { 
   ArrowLeft, Map as MapIcon, List, TriangleAlert, MapPin, Phone, 
   RefreshCw, Globe, Hospital, Ambulance, ShieldAlert, Wrench, 
-  Truck, Pill, Fuel, Download, CheckCircle2
+  Truck, Pill, Fuel, Download, CheckCircle2, Settings
 } from 'lucide-react';
+import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
+import { Capacitor } from '@capacitor/core';
 
 export default function Nearby() {
   const navigate = useNavigate();
@@ -42,9 +44,11 @@ export default function Nearby() {
     try {
       const { lat, lng } = await getStoredLocation();
       setUserLat(lat); setUserLng(lng);
-      
-      const raw = await fetchNearby(lat, lng, type);
-      setElements(processElements(raw, lat, lng));
+
+      const result = await fetchNearby(lat, lng, type);
+      // fetchNearby returns { places, expandedRadius } — extract the array
+      const places = Array.isArray(result) ? result : (result?.places ?? []);
+      setElements(processElements(places, lat, lng));
       setStatus('ok');
     } catch (err) {
       console.error('Load services failed:', err);
@@ -200,12 +204,30 @@ function EmptyState({ info }) {
 }
 
 function ErrorState({ onRetry }) {
+  const handleOpenSettings = async () => {
+    if (Capacitor.isNativePlatform()) {
+      await NativeSettings.open({
+        optionAndroid: AndroidSettings.ApplicationDetails,
+        optionIOS: IOSSettings.App
+      });
+    } else {
+      alert('Please enable location in your browser settings.');
+    }
+  };
+
   return (
     <div className="empty">
       <div className="empty-icon"><TriangleAlert size={48} color="#e53935" /></div>
       <div className="empty-text">
-        Failed to load services.<br /><br />
-        <button onClick={onRetry} className="retry-btn">Retry</button>
+        Failed to load services. Please ensure location access is granted.<br /><br />
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <button onClick={onRetry} className="retry-btn" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <RefreshCw size={16} /> Retry
+          </button>
+          <button onClick={handleOpenSettings} className="retry-btn" style={{ background: '#666', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Settings size={16} /> Settings
+          </button>
+        </div>
       </div>
     </div>
   );
